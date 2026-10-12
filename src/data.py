@@ -60,8 +60,22 @@ def get_hourly_sales(sales_data):
     return hourly_data
 
 
-# print function to test raw and hourly sales data
-def test_data(sales_data, hourly_data):
+# Get hourly product sales by store, date, hour, and product category
+# The units_sold column shows how many items were sold in each category
+def get_hourly_products(sales_data):
+    product_hourly_data = (
+        sales_data.groupby(
+            ["store_location", "transaction_date", "hour", "product_category"]
+        )["transaction_qty"]
+        .sum()
+        .reset_index(name="units_sold")
+    )
+
+    return product_hourly_data
+
+
+# print function to test raw, hourly, and product hourly sales data
+def test_data(sales_data, hourly_data, product_hourly_data):
     print(
         "\nFirst 5 sales rows:\n",
         sales_data.head(),
@@ -83,6 +97,14 @@ def test_data(sales_data, hourly_data):
         hourly_data.head(10),
         "\n\nNumber of hourly rows:",
         len(hourly_data),
+        "\n\nZero-transaction hourly rows:",
+        len(hourly_data[hourly_data["transaction_count"] == 0]),
+        "\n\nExample zero-transaction hours:\n",
+        hourly_data[hourly_data["transaction_count"] == 0].head(10),
+        "\n\nFirst 10 hourly product rows:\n",
+        product_hourly_data.head(10),
+        "\n\nNumber of hourly product rows:",
+        len(product_hourly_data),
     )
 
     print("\nData info:")
@@ -94,6 +116,7 @@ def test_data(sales_data, hourly_data):
 
 sales_data = get_data()
 hourly_data = get_hourly_sales(sales_data)
+product_hourly_data = get_hourly_products(sales_data)
 
 # Uncomment for testing data
-test_data(sales_data, hourly_data)
+test_data(sales_data, hourly_data, product_hourly_data)
