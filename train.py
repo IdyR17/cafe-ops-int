@@ -79,6 +79,51 @@ def test_model(model, test_features, test_target):
     return predictions, mae
 
 
+# Create baseline predictions using historical average transactions
+def create_hourly_baseline(train_data, test_data):
+
+    # Average for each store, day of week, and hour
+    historical_averages = (
+        train_data.groupby(["store_location", "day_of_week", "hour"])[
+            "transaction_count"
+        ]
+        .mean()
+        .reset_index(name="baseline_prediction")
+    )
+
+    # Match those averages to the test data
+    baseline_data = test_data.merge(
+        historical_averages,
+        on=["store_location", "day_of_week", "hour"],
+        how="left",
+    )
+
+    # Create a backup average using just store and hour
+    store_hour_averages = (
+        train_data.groupby(["store_location", "hour"])["transaction_count"]
+        .mean()
+        .reset_index(name="store_hour_average")
+    )
+
+    baseline_data = baseline_data.merge(
+        store_hour_averages,
+        on=["store_location", "hour"],
+        how="left",
+    )
+
+    # Use the store/hour average when the detailed average is missing
+    baseline_data["baseline_prediction"] = baseline_data["baseline_prediction"].fillna(
+        baseline_data["store_hour_average"]
+    )
+
+    # Final fallback: overall training average
+    baseline_data["baseline_prediction"] = baseline_data["baseline_prediction"].fillna(
+        train_data["transaction_count"].mean()
+    )
+
+    return baseline_data
+
+
 # Prepare the data for ML training
 hourly_data, product_daily_data = prep_data()
 
@@ -147,9 +192,29 @@ prediction_comparison["predicted_transactions"] = hourly_predictions
 print("\nSample hourly predictions:")
 print(prediction_comparison.head(10))
 
-# Temporary prints to confirm encoding worked as expected
-print("\nEncoded hourly training features:")
-print(hourly_train_features.head())
+print(
+    "\nAverage hourly transactions in training data:",
+    round(hourly_train["transaction_count"].mean(), 2),
+)
 
-print("\nEncoded hourly feature columns:")
-print(hourly_train_features.columns.tolist())
+print(
+    "Average hourly transactions in June:",
+    round(hourly_test["transaction_count"].mean(), 2),
+)
+
+print("\nAverage hourly transactions by month:")
+print(hourly_data.groupby("month")["transaction_count"].mean())
+
+# Create and evaluate the historical-average baseline
+hourly_baseline = create_hourly_baseline(
+    hourly_train,
+    hourly_test,
+)
+
+baseline_mae = mean_absolute_error(
+    hourly_baseline["transaction_count"],
+    hourly_baseline["baseline_prediction"],
+)
+
+print("\nHistorical average baseline MAE:", round(baseline_mae, 2))
+print("Random Forest MAE:", round(hourly_mae, 2))
