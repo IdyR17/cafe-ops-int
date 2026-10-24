@@ -124,6 +124,19 @@ def create_hourly_baseline(train_data, test_data):
     return baseline_data
 
 
+# Calculate the average monthly transaction growth using training data only
+def calculate_average_monthly_growth(train_data):
+    monthly_averages = (
+        train_data.groupby("month")["transaction_count"].mean().sort_index()
+    )
+
+    monthly_growth_rates = monthly_averages.pct_change().dropna()
+
+    average_growth_rate = monthly_growth_rates.mean()
+
+    return average_growth_rate
+
+
 # Prepare the data for ML training
 hourly_data, product_daily_data = prep_data()
 
@@ -172,15 +185,38 @@ hourly_model = train_random_forest(
     hourly_train_features,
     hourly_train_target,
 )
+
+# Calculate historical monthly growth using training data only
+average_monthly_growth = calculate_average_monthly_growth(hourly_train)
+
+print(
+    "\nAverage monthly growth from training data:",
+    round(average_monthly_growth * 100, 2),
+    "%",
+)
+
+
 ####MAE Evaluation####
 # Evaluate the hourly transaction model MAE using the June test data
+
+
 hourly_predictions, hourly_mae = test_model(
     hourly_model,
     hourly_test_features,
     hourly_test_target,
 )
 
+# Adjust Random Forest predictions using historical growth
+adjusted_hourly_predictions = hourly_predictions * (1 + average_monthly_growth)
+
 print("\nHourly model MAE:", round(hourly_mae, 2))
+adjusted_hourly_mae = mean_absolute_error(
+    hourly_test_target,
+    adjusted_hourly_predictions,
+)
+
+print("Growth-adjusted Random Forest MAE:", round(adjusted_hourly_mae, 2))
+
 
 # Compare some actual transaction counts to the model predictions
 prediction_comparison = hourly_test[
