@@ -1,7 +1,7 @@
 # The model trainer
 # after preparing the data, this script will train the ML model
 # To measure effectiveness, we will split the data into training set (past data) and test set ("future" data)
-
+from sklearn.ensemble import RandomForestRegressor
 import pandas as pd
 from src.data import prep_data, save_processed_data
 
@@ -55,6 +55,20 @@ def encode_cat_features(
     return encoded_train_features, encoded_test_features
 
 
+##### TRAINING THE MODEL #####
+# Train Random Forest regression model
+def train_random_forest(train_features, train_target):
+    model = RandomForestRegressor(
+        n_estimators=100,
+        random_state=42,
+    )
+
+    model.fit(train_features, train_target)
+    print("\nHourly Random Forest trained successfully.")
+
+    return model
+
+
 # Prepare the data for ML training
 hourly_data, product_daily_data = prep_data()
 
@@ -97,6 +111,11 @@ hourly_train_features, hourly_test_features = encode_cat_features(
     ["store_location"],
 )
 
+# Train the hourly transaction model
+hourly_model = train_random_forest(
+    hourly_train_features,
+    hourly_train_target,
+)
 
 # Temporary prints to confirm encoding worked as expected
 print("\nEncoded hourly training features:")
