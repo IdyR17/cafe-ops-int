@@ -62,6 +62,49 @@ def get_hourly_sales(sales_data):
     return hourly_data
 
 
+# Add previous-month sales information as features for the hourly model
+def add_previous_month_features(hourly_data):
+
+    # Find the average hourly transactions for each store in each month
+    monthly_store_data = (
+        hourly_data.groupby(["store_location", "month"])["transaction_count"]
+        .mean()
+        .reset_index(name="monthly_avg_transactions")
+        .sort_values(["store_location", "month"])
+    )
+
+    # Calculate each store's month-to-month growth
+    monthly_store_data["monthly_growth"] = monthly_store_data.groupby("store_location")[
+        "monthly_avg_transactions"
+    ].pct_change()
+
+    # Give each month the PREVIOUS month's average
+    monthly_store_data["previous_month_avg"] = monthly_store_data.groupby(
+        "store_location"
+    )["monthly_avg_transactions"].shift(1)
+
+    # Give each month the growth rate that was known from the previous month
+    monthly_store_data["previous_month_growth"] = monthly_store_data.groupby(
+        "store_location"
+    )["monthly_growth"].shift(1)
+
+    # Add those new features back onto every hourly row
+    hourly_data = hourly_data.merge(
+        monthly_store_data[
+            [
+                "store_location",
+                "month",
+                "previous_month_avg",
+                "previous_month_growth",
+            ]
+        ],
+        on=["store_location", "month"],
+        how="left",
+    )
+
+    return hourly_data
+
+
 # Get daily product sales by store, date, and product
 # The units_sold column shows how many items were sold in each category
 def get_daily_products(sales_data):
@@ -159,6 +202,7 @@ def prep_data():
     sales_data = get_data()
 
     hourly_data = get_hourly_sales(sales_data)
+    hourly_data = add_previous_month_features(hourly_data)
 
     product_daily_data = get_daily_products(sales_data)
     product_daily_data = fill_missing_product_days(product_daily_data, sales_data)

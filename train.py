@@ -65,8 +65,6 @@ def train_random_forest(train_features, train_target):
     )
 
     model.fit(train_features, train_target)
-    print("\nHourly Random Forest trained successfully.")
-
     return model
 
 
@@ -119,6 +117,50 @@ def create_hourly_baseline(train_data, test_data):
     # Final fallback: overall training average
     baseline_data["baseline_prediction"] = baseline_data["baseline_prediction"].fillna(
         train_data["transaction_count"].mean()
+    )
+
+    return baseline_data
+
+
+# Create baseline predictions using historical average product sales
+def create_product_baseline(train_data, test_data):
+
+    # Average units sold for each store, product, and day of week
+    historical_averages = (
+        train_data.groupby(["store_location", "product_id", "day_of_week"])[
+            "units_sold"
+        ]
+        .mean()
+        .reset_index(name="baseline_prediction")
+    )
+
+    baseline_data = test_data.merge(
+        historical_averages,
+        on=["store_location", "product_id", "day_of_week"],
+        how="left",
+    )
+
+    # Backup average using store and product
+    store_product_averages = (
+        train_data.groupby(["store_location", "product_id"])["units_sold"]
+        .mean()
+        .reset_index(name="store_product_average")
+    )
+
+    baseline_data = baseline_data.merge(
+        store_product_averages,
+        on=["store_location", "product_id"],
+        how="left",
+    )
+
+    # Use store/product average if detailed average is missing
+    baseline_data["baseline_prediction"] = baseline_data["baseline_prediction"].fillna(
+        baseline_data["store_product_average"]
+    )
+
+    # Final fallback
+    baseline_data["baseline_prediction"] = baseline_data["baseline_prediction"].fillna(
+        train_data["units_sold"].mean()
     )
 
     return baseline_data
@@ -218,29 +260,6 @@ adjusted_hourly_mae = mean_absolute_error(
 print("Growth-adjusted Random Forest MAE:", round(adjusted_hourly_mae, 2))
 
 
-# Compare some actual transaction counts to the model predictions
-prediction_comparison = hourly_test[
-    ["store_location", "transaction_date", "hour", "transaction_count"]
-].copy()
-
-prediction_comparison["predicted_transactions"] = hourly_predictions
-
-print("\nSample hourly predictions:")
-print(prediction_comparison.head(10))
-
-print(
-    "\nAverage hourly transactions in training data:",
-    round(hourly_train["transaction_count"].mean(), 2),
-)
-
-print(
-    "Average hourly transactions in June:",
-    round(hourly_test["transaction_count"].mean(), 2),
-)
-
-print("\nAverage hourly transactions by month:")
-print(hourly_data.groupby("month")["transaction_count"].mean())
-
 # Create and evaluate the historical-average baseline
 hourly_baseline = create_hourly_baseline(
     hourly_train,
@@ -254,3 +273,226 @@ baseline_mae = mean_absolute_error(
 
 print("\nHistorical average baseline MAE:", round(baseline_mae, 2))
 print("Random Forest MAE:", round(hourly_mae, 2))
+
+##### TREND FEATURE EXPERIMENT #####
+# This experiment tests if previous-month average transaction volume
+# and previous-month growth improve the Random Forest.
+# The trend features produced a slightly higher MAE, so they are not used
+# in the final hourly model.
+
+trend_hourly_data = hourly_data.dropna(
+    subset=[
+        "previous_month_avg",
+        "previous_month_growth",
+    ]
+).copy()
+
+trend_hourly_train, trend_hourly_test = split_data(
+    trend_hourly_data,
+    cutoff_date,
+)
+
+original_feature_columns = [
+    "store_location",
+    "hour",
+    "day_of_week",
+    "month",
+    "is_weekend",
+]
+
+trend_feature_columns = [
+    "store_location",
+    "hour",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "previous_month_avg",
+    "previous_month_growth",
+]
+
+original_train_features, original_train_target = separate_features_and_target(
+    trend_hourly_train,
+    original_feature_columns,
+    "transaction_count",
+)
+
+original_test_features, original_test_target = separate_features_and_target(
+    trend_hourly_test,
+    original_feature_columns,
+    "transaction_count",
+)
+
+trend_train_features, trend_train_target = separate_features_and_target(
+    trend_hourly_train,
+    trend_feature_columns,
+    "transaction_count",
+)
+
+trend_test_features, trend_test_target = separate_features_and_target(
+    trend_hourly_test,
+    trend_feature_columns,
+    "transaction_count",
+)
+
+original_train_features, original_test_features = encode_cat_features(
+    original_train_features,
+    original_test_features,
+    ["store_location"],
+)
+
+trend_train_features, trend_test_features = encode_cat_features(
+    trend_train_features,
+    trend_test_features,
+    ["store_location"],
+)
+
+original_comparison_model = train_random_forest(
+    original_train_features,
+    original_train_target,
+)
+
+trend_model = train_random_forest(
+    trend_train_features,
+    trend_train_target,
+)
+
+original_comparison_predictions, original_comparison_mae = test_model(
+    original_comparison_model,
+    original_test_features,
+    original_test_target,
+)
+
+trend_predictions, trend_mae = test_model(
+    trend_model,
+    trend_test_features,
+    trend_test_target,
+)
+
+print(
+    "\nOriginal features MAE using March-May training:",
+    round(original_comparison_mae, 2),
+)
+
+print(
+    "Trend features MAE using March-May training:",
+    round(trend_mae, 2),
+)
+
+##### PRODUCT DEMAND MODEL #####
+
+# Features and target for the daily product demand model
+product_feature_columns = [
+    "store_location",
+    "product_id",
+    "day_of_week",
+    "month",
+    "is_weekend",
+]
+
+product_target_column = "units_sold"
+
+# Separate features and target for product training data
+product_train_features, product_train_target = separate_features_and_target(
+    product_daily_train,
+    product_feature_columns,
+    product_target_column,
+)
+
+# Separate features and target for product testing data
+product_test_features, product_test_target = separate_features_and_target(
+    product_daily_test,
+    product_feature_columns,
+    product_target_column,
+)
+
+
+print("\nProduct training features:")
+print(product_train_features.head())
+
+print("\nProduct training target:")
+print(product_train_target.head())
+
+product_train_features, product_test_features = encode_cat_features(
+    product_train_features,
+    product_test_features,
+    [
+        "store_location",
+        "product_id",
+    ],
+)
+
+print("\nEncoded product training features:")
+print(product_train_features.head())
+
+print("\nNumber of product model features:")
+print(len(product_train_features.columns))
+
+# Train the daily product demand model
+product_model = train_random_forest(
+    product_train_features,
+    product_train_target,
+)
+
+print("\nProduct Random Forest trained successfully.")
+
+# Evaluate the product demand model using the June test data
+product_predictions, product_mae = test_model(
+    product_model,
+    product_test_features,
+    product_test_target,
+)
+
+print("\nProduct model MAE:", round(product_mae, 2))
+
+
+# Compare actual product sales to model predictions
+product_prediction_comparison = product_daily_test[
+    [
+        "store_location",
+        "transaction_date",
+        "product_id",
+        "product_detail",
+        "units_sold",
+    ]
+].copy()
+
+product_prediction_comparison["predicted_units"] = product_predictions
+
+print("\nSample product predictions:")
+print(product_prediction_comparison.head(15))
+
+# Calculate the error for each product prediction
+product_prediction_comparison["absolute_error"] = (
+    product_prediction_comparison["units_sold"]
+    - product_prediction_comparison["predicted_units"]
+).abs()
+
+# Show some of the highest-volume product days
+high_volume_predictions = product_prediction_comparison.sort_values(
+    "units_sold",
+    ascending=False,
+)
+
+print("\nSample high-volume product predictions:")
+print(high_volume_predictions.head(20))
+
+# Compare product model against a historical-average baseline
+product_baseline = create_product_baseline(
+    product_daily_train,
+    product_daily_test,
+)
+
+product_baseline_mae = mean_absolute_error(
+    product_baseline["units_sold"],
+    product_baseline["baseline_prediction"],
+)
+
+print(
+    "\nProduct historical average baseline MAE:",
+    round(product_baseline_mae, 2),
+)
+
+print(
+    "Product Random Forest MAE:",
+    round(product_mae, 2),
+)
