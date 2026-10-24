@@ -28,6 +28,33 @@ def separate_features_and_target(data, feature_columns, target_column):
     return features, target
 
 
+# Convert text-based columns into numeric columns using yes/no encoding (store_location)
+def encode_cat_features(
+    train_features,
+    test_features,
+    cat_columns,
+):
+    encoded_train_features = pd.get_dummies(
+        train_features,
+        columns=cat_columns,
+        dtype=int,
+    )
+
+    encoded_test_features = pd.get_dummies(
+        test_features,
+        columns=cat_columns,
+        dtype=int,
+    )
+
+    # Make sure the test data has the exact same columns as the training data
+    encoded_test_features = encoded_test_features.reindex(
+        columns=encoded_train_features.columns,
+        fill_value=0,
+    )
+
+    return encoded_train_features, encoded_test_features
+
+
 # Prepare the data for ML training
 hourly_data, product_daily_data = prep_data()
 
@@ -38,7 +65,7 @@ save_processed_data(hourly_data, product_daily_data)
 cutoff_date = pd.Timestamp("2023-06-01")
 hourly_train, hourly_test = split_data(hourly_data, cutoff_date)
 product_daily_train, product_daily_test = split_data(product_daily_data, cutoff_date)
-### Feature Engineering ###
+### Feature Selection ###
 # Separate features and target for hourly data
 hourly_train_features, hourly_train_target = separate_features_and_target(
     hourly_train,
@@ -63,16 +90,17 @@ hourly_test_features, hourly_test_target = separate_features_and_target(
     "transaction_count",
 )
 
-# Temporary prints to confirm the data split correctly
-print("Hourly training rows:", len(hourly_train))
-print("Hourly testing rows:", len(hourly_test))
-print("Product training rows:", len(product_daily_train))
-print("Product testing rows:", len(product_daily_test))
-print("\nHourly columns:")
-print(hourly_data.columns.tolist())
-# prints for the training features and target
-print("\nHourly training features:")
+# Convert store location into numeric columns for the ML model
+hourly_train_features, hourly_test_features = encode_cat_features(
+    hourly_train_features,
+    hourly_test_features,
+    ["store_location"],
+)
+
+
+# Temporary prints to confirm encoding worked as expected
+print("\nEncoded hourly training features:")
 print(hourly_train_features.head())
 
-print("\nHourly training target:")
-print(hourly_train_target.head())
+print("\nEncoded hourly feature columns:")
+print(hourly_train_features.columns.tolist())
