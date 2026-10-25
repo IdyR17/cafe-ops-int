@@ -191,6 +191,24 @@ def fill_missing_product_days(product_daily_data, sales_data):
     return product_daily_data
 
 
+# Add the average units sold during the previous 7 days
+# for each product at each store
+def add_recent_product_features(product_daily_data):
+    product_daily_data = product_daily_data.sort_values(
+        ["store_location", "product_id", "transaction_date"]
+    ).copy()
+
+    product_daily_data["previous_7_day_avg"] = product_daily_data.groupby(
+        ["store_location", "product_id"]
+    )["units_sold"].transform(
+        lambda sales: sales.shift(1)
+        .rolling(7, min_periods=1)
+        .mean()  # Move the sales history back one day before calculating the average.
+    )
+
+    return product_daily_data
+
+
 # Save the processed datasets as CSV files
 def save_processed_data(hourly_data, product_daily_data):
     hourly_data.to_csv("data/hourly_sales.csv", index=False)
@@ -206,6 +224,8 @@ def prep_data():
 
     product_daily_data = get_daily_products(sales_data)
     product_daily_data = fill_missing_product_days(product_daily_data, sales_data)
+
+    product_daily_data = add_recent_product_features(product_daily_data)
 
     return hourly_data, product_daily_data
 

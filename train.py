@@ -496,3 +496,180 @@ print(
     "Product Random Forest MAE:",
     round(product_mae, 2),
 )
+
+# Check the distribution of daily product sales
+print("\nProduct sales distribution:")
+print(product_daily_test["units_sold"].describe())
+
+zero_sale_percent = (product_daily_test["units_sold"] == 0).mean() * 100
+
+print(
+    "\nPercent of June product-days with zero sales:", round(zero_sale_percent, 2), "%"
+)
+
+
+# MAE only for days when the product actually sold
+nonzero_mask = product_daily_test["units_sold"] > 0
+
+nonzero_mae = mean_absolute_error(
+    product_daily_test.loc[nonzero_mask, "units_sold"],
+    product_predictions[nonzero_mask],
+)
+
+print(
+    "Product MAE on nonzero-sale days:",
+    round(nonzero_mae, 2),
+)
+
+
+# MAE for higher-volume product days
+high_volume_mask = product_daily_test["units_sold"] >= 10
+
+high_volume_mae = mean_absolute_error(
+    product_daily_test.loc[high_volume_mask, "units_sold"],
+    product_predictions[high_volume_mask],
+)
+
+print(
+    "Product MAE when 10+ units were sold:",
+    round(high_volume_mae, 2),
+)
+
+print("\nAverage product units sold by month:")
+print(product_daily_data.groupby("month")["units_sold"].mean())
+
+
+print("\nRecent product sales feature:")
+print(
+    product_daily_data[
+        [
+            "store_location",
+            "transaction_date",
+            "product_id",
+            "product_detail",
+            "units_sold",
+            "previous_7_day_avg",
+        ]
+    ].head(20)
+)
+
+
+##### RECENT PRODUCT SALES EXPERIMENT #####
+
+# Only use rows where recent sales history is available
+recent_product_data = product_daily_data.dropna(subset=["previous_7_day_avg"]).copy()
+
+recent_product_train, recent_product_test = split_data(
+    recent_product_data,
+    cutoff_date,
+)
+
+original_product_feature_columns = [
+    "store_location",
+    "product_id",
+    "day_of_week",
+    "month",
+    "is_weekend",
+]
+
+recent_product_feature_columns = [
+    "store_location",
+    "product_id",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "previous_7_day_avg",
+]
+
+recent_original_train_features, recent_original_train_target = (
+    separate_features_and_target(
+        recent_product_train,
+        original_product_feature_columns,
+        "units_sold",
+    )
+)
+
+recent_original_test_features, recent_original_test_target = (
+    separate_features_and_target(
+        recent_product_test,
+        original_product_feature_columns,
+        "units_sold",
+    )
+)
+
+recent_train_features, recent_train_target = separate_features_and_target(
+    recent_product_train,
+    recent_product_feature_columns,
+    "units_sold",
+)
+
+recent_test_features, recent_test_target = separate_features_and_target(
+    recent_product_test,
+    recent_product_feature_columns,
+    "units_sold",
+)
+
+recent_original_train_features, recent_original_test_features = encode_cat_features(
+    recent_original_train_features,
+    recent_original_test_features,
+    ["store_location", "product_id"],
+)
+
+recent_train_features, recent_test_features = encode_cat_features(
+    recent_train_features,
+    recent_test_features,
+    ["store_location", "product_id"],
+)
+
+recent_original_model = train_random_forest(
+    recent_original_train_features,
+    recent_original_train_target,
+)
+
+recent_product_model = train_random_forest(
+    recent_train_features,
+    recent_train_target,
+)
+
+recent_original_predictions, recent_original_mae = test_model(
+    recent_original_model,
+    recent_original_test_features,
+    recent_original_test_target,
+)
+
+recent_product_predictions, recent_product_mae = test_model(
+    recent_product_model,
+    recent_test_features,
+    recent_test_target,
+)
+
+print(
+    "\nOriginal product features MAE:",
+    round(recent_original_mae, 2),
+)
+
+print(
+    "Product features + previous 7-day average MAE:",
+    round(recent_product_mae, 2),
+)
+
+# Check the recent-sales model on higher-volume product days
+recent_high_volume_mask = recent_product_test["units_sold"] >= 10
+
+recent_high_volume_mae = mean_absolute_error(
+    recent_product_test.loc[
+        recent_high_volume_mask,
+        "units_sold",
+    ],
+    recent_product_predictions[recent_high_volume_mask],
+)
+
+print(
+    "Original product model MAE on 10+ unit days:",
+    round(high_volume_mae, 2),
+)
+
+print(
+    "Recent-sales model MAE on 10+ unit days:",
+    round(recent_high_volume_mae, 2),
+)
