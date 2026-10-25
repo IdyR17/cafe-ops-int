@@ -14,7 +14,6 @@ from src.visuals import (
 ##### LOAD TRAINED MODELS #####
 
 hourly_model_data = joblib.load("models/hourly_model.joblib")
-
 product_model_data = joblib.load("models/product_model.joblib")
 
 
@@ -40,6 +39,12 @@ st.write(
 
 st.success("Trained models loaded!")
 
+##### TABS ORGANIZATION #####
+
+hourly_tab, product_tab, visuals = st.tabs(
+    ["Hourly Transactions", "Product Demand", "Visualizations"]
+)
+
 ##### LOAD PRODUCT INFORMATION #####
 
 product_data = pd.read_csv("data/daily_products.csv")
@@ -61,186 +66,184 @@ hourly_data = pd.read_csv("data/hourly_sales.csv")
 
 ##### HOURLY TRANSACTION FORECAST #####
 
-st.header("Hourly Transaction Forecast")
+with hourly_tab:
 
-# Performance per staff member input
-productivity_target = st.number_input(
-    "Transactions per Staff Member per Hour",
-    min_value=1,
-    value=10,
-    step=1,
-)
+    st.header("Hourly Transaction Forecast")
 
-store_location = st.selectbox(
-    "Store Location",
-    [
-        "Astoria",
-        "Hell's Kitchen",
-        "Lower Manhattan",
-    ],
-)
+    # Performance per staff member input
+    productivity_target = st.number_input(
+        "Transactions per Staff Member per Hour",
+        min_value=1,
+        value=10,
+        step=1,
+    )
 
-forecast_date = st.date_input(
-    "Forecast Date",
-)
-
-forecast_hour = st.selectbox(
-    "Hour",
-    range(6, 21),
-)
-
-
-if st.button("Predict Hourly Transactions"):
-
-    # Get date features from the selected date
-    day_of_week = forecast_date.weekday()
-    month = forecast_date.month
-    is_weekend = int(day_of_week >= 5)
-
-    # Create one row with the same features used to train the model
-    prediction_data = pd.DataFrame(
+    store_location = st.selectbox(
+        "Store Location",
         [
-            {
-                "store_location": store_location,
-                "hour": forecast_hour,
-                "day_of_week": day_of_week,
-                "month": month,
-                "is_weekend": is_weekend,
-            }
-        ]
+            "Astoria",
+            "Hell's Kitchen",
+            "Lower Manhattan",
+        ],
     )
 
-    # Convert store location into number columns
-    prediction_data = pd.get_dummies(
-        prediction_data,
-        columns=["store_location"],
-        dtype=int,
+    forecast_date = st.date_input(
+        "Forecast Date",
     )
 
-    # Make the prediction data match the columns used during training
-    prediction_data = prediction_data.reindex(
-        columns=hourly_feature_columns,
-        fill_value=0,
+    forecast_hour = st.selectbox(
+        "Hour",
+        range(6, 21),
     )
 
-    # Make the prediction
-    predicted_transactions = hourly_model.predict(prediction_data)[0]
-    predicted_transactions_rounded = round(predicted_transactions)
+    if st.button("Predict Hourly Transactions"):
 
-    # Estimate staffing using the selected productivity target
-    suggested_staff = math.ceil(predicted_transactions / productivity_target)
+        # Get date features from the selected date
+        day_of_week = forecast_date.weekday()
+        month = forecast_date.month
+        is_weekend = int(day_of_week >= 5)
 
-    st.metric(
-        "Predicted Hourly Transactions",
-        predicted_transactions_rounded,
-    )
+        # Create one row with the same features used to train the model
+        prediction_data = pd.DataFrame(
+            [
+                {
+                    "store_location": store_location,
+                    "hour": forecast_hour,
+                    "day_of_week": day_of_week,
+                    "month": month,
+                    "is_weekend": is_weekend,
+                }
+            ]
+        )
 
-    st.metric(
-        "Suggested Staffing Level",
-        suggested_staff,
-    )
+        # Convert store location into number columns
+        prediction_data = pd.get_dummies(
+            prediction_data,
+            columns=["store_location"],
+            dtype=int,
+        )
 
-    st.caption(
-        "Staffing is calculated using the selected transactions-per-staff-member target. "
-        "It is an operational recommendation based on predicted demand"
-    )
+        # Make the prediction data match the columns used during training
+        prediction_data = prediction_data.reindex(
+            columns=hourly_feature_columns,
+            fill_value=0,
+        )
+
+        # Make the prediction
+        predicted_transactions = hourly_model.predict(prediction_data)[0]
+        predicted_transactions_rounded = round(predicted_transactions)
+
+        # Estimate staffing using the selected productivity target
+        suggested_staff = math.ceil(predicted_transactions / productivity_target)
+
+        st.metric(
+            "Predicted Hourly Transactions",
+            predicted_transactions_rounded,
+        )
+
+        st.metric(
+            "Suggested Staffing Level",
+            suggested_staff,
+        )
+
+        st.caption(
+            "Staffing is calculated using the selected transactions-per-staff-member target. "
+            "It is an operational recommendation based on predicted demand"
+        )
 
 ##### PRODUCT DEMAND FORECAST #####
+with product_tab:
+    st.header("Daily Product Demand Forecast")
 
-st.header("Daily Product Demand Forecast")
+    # Create a list that shows both the product ID and product name
+    product_options = {}
 
+    for _, product in product_list.iterrows():
+        product_label = str(product["product_id"]) + " - " + product["product_detail"]
 
-# Create a list that shows both the product ID and product name
-product_options = {}
+        product_options[product_label] = product["product_id"]
 
-for _, product in product_list.iterrows():
-    product_label = str(product["product_id"]) + " - " + product["product_detail"]
-
-    product_options[product_label] = product["product_id"]
-
-
-product_store_location = st.selectbox(
-    "Store Location",
-    [
-        "Astoria",
-        "Hell's Kitchen",
-        "Lower Manhattan",
-    ],
-    key="product_store",
-)
-
-product_forecast_date = st.date_input(
-    "Forecast Date",
-    key="product_date",
-)
-
-selected_product = st.selectbox(
-    "Product",
-    product_options.keys(),
-)
-
-
-if st.button("Predict Product Demand"):
-
-    # Get the selected product ID
-    selected_product_id = product_options[selected_product]
-
-    # Get date features from the selected date
-    product_day_of_week = product_forecast_date.weekday()
-    product_month = product_forecast_date.month
-    product_is_weekend = int(product_day_of_week >= 5)
-
-    # Create one row with the same features used to train the model
-    product_prediction_data = pd.DataFrame(
+    product_store_location = st.selectbox(
+        "Store Location",
         [
-            {
-                "store_location": product_store_location,
-                "product_id": selected_product_id,
-                "day_of_week": product_day_of_week,
-                "month": product_month,
-                "is_weekend": product_is_weekend,
-            }
-        ]
-    )
-
-    # Convert store location and product ID into numeric columns
-    product_prediction_data = pd.get_dummies(
-        product_prediction_data,
-        columns=[
-            "store_location",
-            "product_id",
+            "Astoria",
+            "Hell's Kitchen",
+            "Lower Manhattan",
         ],
-        dtype=int,
+        key="product_store",
     )
 
-    # Make the prediction data match the columns used during training
-    product_prediction_data = product_prediction_data.reindex(
-        columns=product_feature_columns,
-        fill_value=0,
+    product_forecast_date = st.date_input(
+        "Forecast Date",
+        key="product_date",
     )
 
-    # Make the prediction
-    predicted_units = product_model.predict(product_prediction_data)[0]
-
-    predicted_units_rounded = round(predicted_units)
-
-    # Add a 15% safety buffer for the suggested par level
-    suggested_par = math.ceil(predicted_units * 1.15)
-
-    st.metric(
-        "Predicted Units Sold",
-        predicted_units_rounded,
+    selected_product = st.selectbox(
+        "Product",
+        product_options.keys(),
     )
 
-    st.metric(
-        "Suggested Par Level",
-        suggested_par,
-    )
+    if st.button("Predict Product Demand"):
 
-    st.caption("Suggested par includes a 15% safety buffer above predicted demand.")
+        # Get the selected product ID
+        selected_product_id = product_options[selected_product]
+
+        # Get date features from the selected date
+        product_day_of_week = product_forecast_date.weekday()
+        product_month = product_forecast_date.month
+        product_is_weekend = int(product_day_of_week >= 5)
+
+        # Create one row with the same features used to train the model
+        product_prediction_data = pd.DataFrame(
+            [
+                {
+                    "store_location": product_store_location,
+                    "product_id": selected_product_id,
+                    "day_of_week": product_day_of_week,
+                    "month": product_month,
+                    "is_weekend": product_is_weekend,
+                }
+            ]
+        )
+
+        # Convert store location and product ID into numeric columns
+        product_prediction_data = pd.get_dummies(
+            product_prediction_data,
+            columns=[
+                "store_location",
+                "product_id",
+            ],
+            dtype=int,
+        )
+
+        # Make the prediction data match the columns used during training
+        product_prediction_data = product_prediction_data.reindex(
+            columns=product_feature_columns,
+            fill_value=0,
+        )
+
+        # Make the prediction
+        predicted_units = product_model.predict(product_prediction_data)[0]
+
+        predicted_units_rounded = round(predicted_units)
+
+        # Add a 15% safety buffer for the suggested par level
+        suggested_par = math.ceil(predicted_units * 1.15)
+
+        st.metric(
+            "Predicted Units Sold",
+            predicted_units_rounded,
+        )
+
+        st.metric(
+            "Suggested Par Level",
+            suggested_par,
+        )
+
+        st.caption("Suggested par includes a 15% safety buffer above predicted demand.")
 
 ##### VISUALIZATIONS #####
-
-show_hourly_transaction_volume(hourly_data)
-show_product_demand(product_data)
-show_daily_transaction_trend(hourly_data)
+with visuals:
+    show_hourly_transaction_volume(hourly_data)
+    show_product_demand(product_data)
+    show_daily_transaction_trend(hourly_data)
