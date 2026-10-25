@@ -1,4 +1,5 @@
 # Main Streamlit app
+import math
 import pandas as pd
 import joblib
 import streamlit as st
@@ -55,6 +56,14 @@ hourly_data = pd.read_csv("data/hourly_sales.csv")
 
 st.header("Hourly Transaction Forecast")
 
+# Performance per staff member input
+productivity_target = st.number_input(
+    "Transactions per Staff Member per Hour",
+    min_value=1,
+    value=10,
+    step=1,
+)
+
 store_location = st.selectbox(
     "Store Location",
     [
@@ -109,10 +118,24 @@ if st.button("Predict Hourly Transactions"):
 
     # Make the prediction
     predicted_transactions = hourly_model.predict(prediction_data)[0]
+    predicted_transactions_rounded = round(predicted_transactions)
+
+    # Estimate staffing using the selected productivity target
+    suggested_staff = math.ceil(predicted_transactions / productivity_target)
 
     st.metric(
-        "Predicted Transactions",
-        round(predicted_transactions),
+        "Predicted Hourly Transactions",
+        predicted_transactions_rounded,
+    )
+
+    st.metric(
+        "Suggested Staffing Level",
+        suggested_staff,
+    )
+
+    st.caption(
+        "Staffing is calculated using the selected transactions-per-staff-member target. "
+        "It is an operational recommendation based on predicted demand"
     )
 
 ##### PRODUCT DEMAND FORECAST #####
@@ -192,10 +215,22 @@ if st.button("Predict Product Demand"):
     # Make the prediction
     predicted_units = product_model.predict(product_prediction_data)[0]
 
+    predicted_units_rounded = round(predicted_units)
+
+    # Add a 15% safety buffer for the suggested par level
+    suggested_par = math.ceil(predicted_units * 1.15)
+
     st.metric(
         "Predicted Units Sold",
-        round(predicted_units),
+        predicted_units_rounded,
     )
+
+    st.metric(
+        "Suggested Par Level",
+        suggested_par,
+    )
+
+    st.caption("Suggested par includes a 15% safety buffer above predicted demand.")
 
 ##### VISUALIZATION 1: HOURLY TRANSACTION VOLUME #####
 
