@@ -4,6 +4,12 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 
+# Experimental testing
+from src.data import (
+    add_previous_month_features,
+    add_recent_product_features,
+)
+
 
 # Split data into training and testing subsets based on date
 # by using the transaction_date column and a cutoff date
@@ -23,7 +29,9 @@ def separate_features_and_target(data, feature_columns, target_column):
     features = data[
         feature_columns
     ].copy()  # make sure to copy and not just reference the original dataframe
+
     target = data[target_column].copy()
+
     return features, target
 
 
@@ -65,6 +73,7 @@ def train_random_forest(train_features, train_target):
     )
 
     model.fit(train_features, train_target)
+
     return model
 
 
@@ -169,7 +178,12 @@ def create_product_baseline(train_data, test_data):
     return baseline_data
 
 
-##### EXPERIMENTS #####
+##################################################
+##### OPTIONAL EXPERIMENTS #####
+##################################################
+
+
+##### HOURLY GROWTH EXPERIMENT #####
 
 
 # Calculate the average monthly transaction growth using training data only
@@ -213,17 +227,23 @@ def run_hourly_growth_experiment(
     )
 
 
+##### TREND FEATURE EXPERIMENT #####
+
+
 def run_hourly_trend_experiment(
     hourly_data,
     cutoff_date,
 ):
-    ##### TREND FEATURE EXPERIMENT #####
     # This experiment tests if previous-month average transaction volume
     # and previous-month growth improve the Random Forest.
     # The trend features produced a slightly higher MAE, so they are not used
     # in the final hourly model.
 
-    trend_hourly_data = hourly_data.dropna(
+    # Add the experimental previous-month features
+    trend_hourly_data = add_previous_month_features(hourly_data.copy())
+
+    # Only use rows where previous-month data is available
+    trend_hourly_data = trend_hourly_data.dropna(
         subset=[
             "previous_month_avg",
             "previous_month_growth",
@@ -322,15 +342,21 @@ def run_hourly_trend_experiment(
     )
 
 
+##### RECENT PRODUCT SALES EXPERIMENT #####
+
+
 def run_recent_product_sales_experiment(
     product_daily_data,
     cutoff_date,
-    high_volume_mae,
 ):
-    ##### RECENT PRODUCT SALES EXPERIMENT #####
+    # This experiment tests the previous 7-day average
+    # as an additional product demand feature.
+
+    # Add the experimental previous 7-day sales feature
+    recent_product_data = add_recent_product_features(product_daily_data.copy())
 
     # Only use rows where recent sales history is available
-    recent_product_data = product_daily_data.dropna(
+    recent_product_data = recent_product_data.dropna(
         subset=["previous_7_day_avg"]
     ).copy()
 
@@ -428,8 +454,16 @@ def run_recent_product_sales_experiment(
         round(recent_product_mae, 2),
     )
 
-    # Check the recent-sales model on higher-volume product days
+    # Check both models on higher-volume product days
     recent_high_volume_mask = recent_product_test["units_sold"] >= 10
+
+    recent_original_high_volume_mae = mean_absolute_error(
+        recent_product_test.loc[
+            recent_high_volume_mask,
+            "units_sold",
+        ],
+        recent_original_predictions[recent_high_volume_mask],
+    )
 
     recent_high_volume_mae = mean_absolute_error(
         recent_product_test.loc[
@@ -441,7 +475,7 @@ def run_recent_product_sales_experiment(
 
     print(
         "Original product model MAE on 10+ unit days:",
-        round(high_volume_mae, 2),
+        round(recent_original_high_volume_mae, 2),
     )
 
     print(

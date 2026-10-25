@@ -314,5 +314,4 @@ print("\nTrained models saved successfully.")
 # run_recent_product_sales_experiment(
 #     product_daily_data,
 #     cutoff_date,
-#     high_volume_mae,
 # )
