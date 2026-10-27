@@ -1,4 +1,4 @@
-**Cafe Operations Intelligence**
+## **Cafe Operations Intelligence**
 
 Café Operations Intelligence is a machine learning project built for my WGU Computer Science Capstone.
 
